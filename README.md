@@ -12,3 +12,11 @@ Examined whether the distribution of parameter estimates follows a normal distri
 Explored whether the behavior of Maximum Likelihood Estimators depends on which parameter of the distribution is being estimated.
 5. **Variation in MLE Behavior Depending on True Parameter Value.** <br>
 Investigated whether the behavior of Maximum Likelihood Estimators differs depending on the actual value of the estimated parameter.
+
+**The project was implemented in the R programming language and the documentation is written in Polish**
+
+## Purpose
+The project was completed as part of the coursework for the Probability Theory and Mathematical Statistics course.
+
+##  Author
+Katarzyna Wróbel
