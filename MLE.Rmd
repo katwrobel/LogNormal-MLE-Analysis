@@ -1,0 +1,570 @@
+---
+title: "Projekt3"
+author: "Anna Golak, Katarzyna Wróbel"
+date: "2024-01-20"
+output:   
+  html_document:
+    toc: yes
+    toc_depth: 4
+    toc_float:
+      collapsed: yes
+---
+Pakiety, których używam
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+library(MASS)
+library(kableExtra)
+library(ggplot2)
+library(moments)
+library(dplyr)
+```
+Ustawiam ziarno
+```{r}
+set.seed(100)
+```
+
+# Charakterystyka rozkładu logarytmiczno - normalnego
+
+**Rozkład logarytmiczno - normalny** - ciągły rozkład prawdopodobieństwa dodatniej zmiennej losowej, której logarytm ma rozkład normalny.
+
+Niech zmienna losowa Y ma rozkład normalny z parametrami m i s . Wówczas zmienna losowa $$X=e^Y$$ ma rozkład logarytniczno normalny. Gęstość prawdopodobieństwa jest określana wzorem $$
+f(x | \mu, \sigma) = \frac{1}{x \sigma \sqrt{2\pi}} \exp\left(-\frac{(\ln(x) - \mu)^2}{2\sigma^2}\right)$$ 
+gdzie:
+
+- \( x \) to zmienna losowa,
+- \( \mu \) to średnia logarytmu rozkładu,
+- \( \sigma \) to odchylenie standardowe logarytmu rozkładu.
+
+Parametry rozkładu:
+$$0<=\mu < \infty$$ $$\sigma > 0$$
+
+
+
+```{r, echo=FALSE}
+r1 <- rlnorm(100000, 0, 0.125)
+r2 <- rlnorm(100000, 0, 10)
+r3 <- rlnorm(100000, 0, 1)
+
+# Wykres
+plot(density(r1), col = "blue", lwd = 2, main = "Wykres gęstości",
+     xlim = c(0, 3), ylim = c(0, 2), xlab = "Wartości", ylab = "Gęstość prawdopodobieństwa")
+lines(density(r2), col = "green", lwd = 2)
+lines(density(r3), col = "red", lwd = 2)
+
+# Legenda
+legend("topright", legend = c("Sigma = 0.125", "Sigma = 10", "Sigma = 1"), 
+       col = c("blue", "green", "red"), lwd = 2)
+```
+
+Żródła:
+<br>https://stat.ue.katowice.pl/stat11/logarytmiczno-normalny.html
+<br> https://pl.wikipedia.org/wiki/Rozk%C5%82ad_logarytmicznie_normalny
+
+# Badanie
+##  𝜇 = 0, $\sigma$ = $\frac{1}{8}$
+
+
+W naszej pracy badamy własności estymatorów Metody Największej Wiarygodności rozkładu logarytmiczno - normalnego.
+
+Celem naszego badania jest odpowiedzenie na następujące pytania:
+
+- Jak zmienia się dokładność oszacowania w zależności od liczby danych, na podstawie których 
+szacowane są parametry?
+- Jak zmienia się kształt rozkładu (skośność, kurtoza) oszacowanych wartości parametrów w 
+zależności od liczby danych, na podstawie których szacowane są parametry?
+- Czy rozkład oszacowań parametrów jest rozkładem normalnym? jak to zależy od liczby 
+danych?
+- Czy zachowanie estymatorów MNW zależy od tego, który parametr rozkładu jest szacowany?
+- Czy zachowanie estymatorów MNW różni się w zależności od rzeczywistej wartości 
+szacowanego parametru?
+
+Tworzymy funkcję, która estymuje parametry Metody Największej Wiarygodności dla rozkładu logarytmiczno-normalnego
+```{r}
+mnw_estimator_ln <- function(data) {
+  fit_result <- fitdistr(data, "lognormal")
+  return(c(meanlog = fit_result$estimate[1], sdlog = fit_result$estimate[2]))
+}
+```
+Tworzymy funkcję, która losuje `n` danych z rozkładu logarytmiczno - normalnego, na których podstawie Metodą Największej Wiarygodności estymuję parametry rozkładu. Powtarza ten krok 300 razy, a dane zapisuje w ramce danych.
+```{r}
+simulate_mnw <- function(sample_sizes, true_params) {
+  results <- data.frame(
+    Nr = numeric(),
+    True_MeanLog = numeric(),
+    True_SDLog = numeric(),
+    Estimated_MeanLog = numeric(),
+    Estimated_SDLog = numeric(),
+    Sample_Size = numeric()
+  )
+  
+  for (n in sample_sizes) {
+    for (i in 1:500) {
+      simulated_data <- rlnorm(n, meanlog = true_params[1], sdlog = true_params[2])
+      
+      estimated_params <- mnw_estimator_ln(simulated_data)
+      
+      result_row <- data.frame(
+        Nr = i,
+        True_MeanLog = true_params[1],
+        True_SDLog = true_params[2],
+        Estimated_MeanLog = estimated_params[1],
+        Estimated_SDLog = estimated_params[2],
+        Sample_Size = n
+      )
+      
+      results <- rbind(results, result_row)
+    }
+  }
+  
+  return(results)
+}
+```
+Ustalam liczbę danych i parametry rozkładu
+```{r}
+sample_sizes <- c(10, 20, 50, 100, 500, 1000)
+true_params <- c(0, 0.125)
+```
+Wywołuję funckję dla różnej liczby próbek.
+```{r}
+simulation_results <- simulate_mnw(sample_sizes, true_params)
+```
+
+### Średnia logarytmu
+
+Obliczmy statystyki opisowe dla wyestymowanych parametrów.
+```{r}
+summary_stats_meanlog <- simulation_results %>%
+  group_by(Sample_Size) %>%
+  summarise(
+    Mean_MeanLog = mean(Estimated_MeanLog),
+    SD_MeanLog = sd(Estimated_MeanLog),
+    Kurtosis_MeanLog = kurtosis(Estimated_MeanLog),
+    Skewness_MeanLog = skewness(Estimated_MeanLog),
+    Shapiro_p_value = shapiro.test(Estimated_MeanLog)$p.value,
+    Rozkład_normalny = ifelse(shapiro.test(Estimated_MeanLog)$p.value > 0.05, "Tak", "Nie")
+  )
+
+kable(summary_stats_meanlog, "markdown")
+```
+<br>
+Widzimy, że wartości kurtozy niezależnie od liczby danych są bliskie 3, a zatem kurtozie rozkładu normalnego. Skośność we wszystkich przypadkach ma niskie wartości, a wyniki testu Shapiro - Wilka potwierdzają to, że zmienne mają rozkłady normalne.
+<br>
+Zobaczmy, jak wyniki badania prezentują się na histogramach:
+```{r}
+par(mfrow = c(2, 3), mar = c(4, 4, 2, 1))
+
+for (size in sample_sizes) {
+  subset_data <- simulation_results[simulation_results$Sample_Size == size, ]
+  
+  hist(subset_data$Estimated_MeanLog, col = "skyblue", border = "white",
+       main = paste("Liczba danych =", size), xlab = "", ylab = "")
+}
+```
+<br>Widzimy, że niezależnie od liczby danych największe skupienie danych obserwujemy w okolicy zera, a mniejsze w ogonach.<br>
+
+Wykres pudełkowy:
+```{r}
+ggplot(simulation_results, aes(x = as.factor(Sample_Size), y = Estimated_MeanLog)) +
+  geom_boxplot() +
+  labs(title = "",
+       x = "Wielkość próby",
+       y = "Srednia logarytmu")
+```
+
+<br>Tutaj widzimy, że w miarę wzrostu liczby danych, dokładność oszacowania paramteru wzrasta - wartości wyestymowanych estymatorów są coraz bardziej skumulowane wokół rzeczywistej wartości 𝜇.<br>
+
+### Odchylenie standardowe logarytmu
+
+Obliczmy statystyki opisowe dla wyestymowanych parametrów.
+```{r}
+summary_stats_sdlog <- simulation_results %>%
+  group_by(Sample_Size) %>%
+  summarise(
+    Mean_SDLog = mean(Estimated_SDLog),
+    SD_SDLog = sd(Estimated_SDLog),
+    Kurtosis_SDLog = kurtosis(Estimated_SDLog),
+    Skewness_SDLog = skewness(Estimated_SDLog),
+    Shapiro_p_value = shapiro.test(Estimated_SDLog)$p.value,
+    Rozkład_normalny = ifelse(shapiro.test(Estimated_SDLog)$p.value > 0.05, "Tak", "Nie")
+  )
+
+kable(summary_stats_sdlog, "markdown")
+```
+<br>Obserwujemy podobne wyniki - kurtoza zawsze przyjmuje wartość bliską 3, a skośność jest stosunkowo niewielka. Niezależnie od liczby danych, rozkład estymatora jest rozkładem normalnym.<br>
+Zobaczmy, jak wyniki badania prezentują się na histogramach:
+```{r}
+par(mfrow = c(2, 3), mar = c(4, 4, 2, 1))
+
+for (size in sample_sizes) {
+  subset_data <- simulation_results[simulation_results$Sample_Size == size, ]
+  
+  hist(subset_data$Estimated_SDLog, col = "skyblue", border = "white",
+       main = paste("Liczba danych =", size), xlab = "", ylab = "")
+}
+```
+<br>Znowu obserwujemy większe zagęszczenie danych wokół 0 (co jest dobrą wieścią, gdyż wartość estymowanego przez nas parametru wynosi 0.125), a mniejsze na brzegach rozkładu.<br>
+Wykres pudełkowy:
+```{r}
+ggplot(simulation_results, aes(x = as.factor(Sample_Size), y = Estimated_SDLog)) +
+  geom_boxplot() +
+  labs(title = "",
+       x = "Wielkość próby",
+       y = "Odchylenie standardowe logarytmu")
+```
+<br>Znowu obserwujemy wzrost dokładności oszacowania wraz ze wzrostem liczby danych.
+
+## 𝜇 = 0, $\sigma$ = 10
+```{r}
+true_params2 <- c(0, 10)
+```
+Wywołuję funckję dla różnej liczby próbek.
+```{r}
+simulation_results2 <- simulate_mnw(sample_sizes, true_params2)
+```
+
+### Średnia logarytmu
+
+Obliczmy statystyki opisowe dla wyestymowanych parametrów.
+```{r}
+summary_stats_meanlog2 <- simulation_results2 %>%
+  group_by(Sample_Size) %>%
+  summarise(
+    Mean_MeanLog = mean(Estimated_MeanLog),
+    SD_MeanLog = sd(Estimated_MeanLog),
+    Kurtosis_MeanLog = kurtosis(Estimated_MeanLog),
+    Skewness_MeanLog = skewness(Estimated_MeanLog),
+    Shapiro_p_value = shapiro.test(Estimated_MeanLog)$p.value,
+    Rozkład_normalny = ifelse(shapiro.test(Estimated_MeanLog)$p.value > 0.05, "Tak", "Nie")
+  )
+kable(summary_stats_meanlog2, "markdown")
+```
+<br>Znowu widzimy podobieństwa do rozkładu normalnego niezależnie od ilości danych - kurtoza bliska 3, niska skośność. Wyniki testu Shapiro - Wilka wskazują na to, że cechy (znowu niezależnie od liczby danych) mają rozkład normalny.<br>
+Zobaczmy, jak wyniki badania prezentują się na histogramach:
+```{r}
+par(mfrow = c(2, 3), mar = c(4, 4, 2, 1))
+
+for (size in sample_sizes) {
+  subset_data2 <- simulation_results2[simulation_results2$Sample_Size == size, ]
+  
+  hist(subset_data2$Estimated_MeanLog, col = "skyblue", border = "white",
+       main = paste("Liczba danych =", size), xlab = "", ylab = "")
+}
+```
+<br>Podobnie jak wcześniej - duża koncentracja danych wokół 0 oraz niska na brzegach.<br>
+Wykres pudełkowy:
+```{r}
+ggplot(simulation_results2, aes(x = as.factor(Sample_Size), y = Estimated_MeanLog)) +
+  geom_boxplot() +
+  labs(title = "",
+       x = "Wielkość próby",
+       y = "Srednia logarytmu")
+```
+<br>Tutaj znowu obserwujemy zwiększenie dokładności oszacowania wraz ze wzrostem danych.<br>
+
+### Odchylenie standardowe logarytmu
+
+Obliczmy statystyki opisowe dla wyestymowanych parametrów.
+```{r}
+summary_stats_sdlog3 <- simulation_results2 %>%
+  group_by(Sample_Size) %>%
+  summarise(
+    Mean_SDLog = mean(Estimated_SDLog),
+    SD_SDLog = sd(Estimated_SDLog),
+    Kurtosis_SDLog = kurtosis(Estimated_SDLog),
+    Skewness_SDLog = skewness(Estimated_SDLog),
+    Shapiro_p_value = shapiro.test(Estimated_SDLog)$p.value,
+    Rozkład_normalny = ifelse(shapiro.test(Estimated_SDLog)$p.value > 0.05, "Tak", "Nie")
+  )
+
+kable(summary_stats_sdlog3, "markdown")
+```
+<br>Niezależnie od liczby danych, przeciętna wartość estymatora jest bliska rzeczywistej wartości estymatora, a cecha ma rozkład normalny we wszystkich przypadkach.<br>
+Zobaczmy, jak wyniki badania prezentują się na histogramach:
+```{r}
+par(mfrow = c(2, 3), mar = c(4, 4, 2, 1))
+
+for (size in sample_sizes) {
+  subset_data3 <- simulation_results2[simulation_results2$Sample_Size == size, ]
+  
+  hist(subset_data3$Estimated_SDLog, col = "skyblue", border = "white",
+       main = paste("Liczba danych =", size), xlab = "", ylab = "")
+}
+```
+<br>Widzimy duże zagęszczenie danych wokół 10 w każdym przypadku, a małe zagęszczenie po brzegach.
+Wykres pudełkowy:
+```{r}
+ggplot(simulation_results2, aes(x = as.factor(Sample_Size), y = Estimated_SDLog)) +
+  geom_boxplot() +
+  labs(title = "",
+       x = "Wielkość próby",
+       y = "Odchylenie standardowe logarytmu")
+```
+<br>Znowu widzimy, że wraz ze wzrostem liczby danych, wartości estymatorów są coraz mocniej skumulowane wokół rzeczywistej wartości $\sigma$.
+
+## 𝜇 = 0, $\sigma$ = 1
+```{r}
+true_params3 <- c(0, 1)
+```
+Wywołuję funckję dla różnej liczby próbek.
+```{r}
+simulation_results3<- simulate_mnw(sample_sizes, true_params3)
+```
+
+### Średnia logarytmu
+
+Obliczmy statystyki opisowe dla wyestymowanych parametrów.
+```{r}
+summary_stats_meanlog4 <- simulation_results3 %>%
+  group_by(Sample_Size) %>%
+  summarise(
+    Mean_MeanLog = mean(Estimated_MeanLog),
+    SD_MeanLog = sd(Estimated_MeanLog),
+    Kurtosis_MeanLog = kurtosis(Estimated_MeanLog),
+    Skewness_MeanLog = skewness(Estimated_MeanLog),
+    Shapiro_p_value = shapiro.test(Estimated_MeanLog)$p.value,
+    Rozkład_normalny = ifelse(shapiro.test(Estimated_MeanLog)$p.value > 0.05, "Tak", "Nie")
+  )
+
+kable(summary_stats_meanlog4, "markdown")
+```
+<br>Niezależnie od liczby danych estymatory mają rozkład normalny<br>
+Zobaczmy, jak wyniki badania prezentują się na histogramach:
+```{r}
+par(mfrow = c(2, 3), mar = c(4, 4, 2, 1))
+
+for (size in sample_sizes) {
+  subset_data4 <- simulation_results3[simulation_results3$Sample_Size == size, ]
+  
+  hist(subset_data3$Estimated_MeanLog, col = "skyblue", border = "white",
+       main = paste("Liczba danych =", size), xlab = "", ylab = "")
+}
+```
+<br>Największe zagęszczenie wokoł zera, niskie zagęszczenie danych na brzegach.<br>
+Wykres pudełkowy:
+```{r}
+ggplot(simulation_results3, aes(x = as.factor(Sample_Size), y = Estimated_MeanLog)) +
+  geom_boxplot() +
+  labs(title = "",
+       x = "Wielkość próby",
+       y = "Średnia logarytmu")
+```
+<br>Znowu - dokładność dopasowania wzrasta wzraz ze wzrostem liczby danych.<br>
+
+### Odchylenie standardowe logarytmu
+
+Obliczmy statystyki opisowe dla wyestymowanych parametrów.
+```{r}
+summary_stats_sdlog5 <- simulation_results3 %>%
+  group_by(Sample_Size) %>%
+  summarise(
+    Mean_SDLog = mean(Estimated_SDLog),
+    SD_SDLog = sd(Estimated_SDLog),
+    Kurtosis_SDLog = kurtosis(Estimated_SDLog),
+    Skewness_SDLog = skewness(Estimated_SDLog),
+    Shapiro_p_value = shapiro.test(Estimated_SDLog)$p.value,
+    Rozkład_normalny = ifelse(shapiro.test(Estimated_SDLog)$p.value > 0.05, "Tak", "Nie")
+  )
+kable(summary_stats_sdlog5, "markdown")
+```
+<br>Niezależnie od liczby losowanych danych, na podstawie których szacujemy parametry, rozkład oszacowań parametrów jest rozkładem normalnym. Wnioskujemy to na podstawie kurtozy, skośności oraz wyniku testu Shapiro - Wilka. <br>
+Zobaczmy, jak wyniki badania prezentują się na histogramach:
+```{r}
+par(mfrow = c(2, 3), mar = c(4, 4, 2, 1))
+
+for (size in sample_sizes) {
+  subset_data5 <- simulation_results3[simulation_results3$Sample_Size == size, ]
+  
+  hist(subset_data5$Estimated_SDLog, col = "skyblue", border = "white",
+       main = paste("Liczba danych =", size), xlab = "", ylab = "")
+}
+```
+<br>Wszystkie histogramy wyglądają podobnie. Duże zagęszczenie danych wokół zera, małe zagęszczenie po brzegach.<br>
+Wykres pudełkowy:
+```{r}
+ggplot(simulation_results3, aes(x = as.factor(Sample_Size), y = Estimated_SDLog)) +
+  geom_boxplot() +
+  labs(title = "",
+       x = "Wielkość próby",
+       y = "Odchylenie standardowe logarytmu")
+```
+<br>Wraz ze wzrostem liczby danych, wyniki mocniej skupiają się wokół rzeczywistej wartości estymowanego parametru<br>
+
+## 𝜇 = -3, $\sigma$ = 1
+```{r}
+true_params4 <- c(-3, 1)
+```
+Wywołuję funckję dla różnej liczby próbek.
+```{r}
+simulation_results4<- simulate_mnw(sample_sizes, true_params4)
+```
+
+### Średnia logarytmu
+
+Obliczmy statystyki opisowe dla wyestymowanych parametrów.
+```{r}
+summary_stats_meanlog6 <- simulation_results4 %>%
+  group_by(Sample_Size) %>%
+  summarise(
+    Mean_MeanLog = mean(Estimated_MeanLog),
+    SD_MeanLog = sd(Estimated_MeanLog),
+    Kurtosis_MeanLog = kurtosis(Estimated_MeanLog),
+    Skewness_MeanLog = skewness(Estimated_MeanLog),
+    Shapiro_p_value = shapiro.test(Estimated_MeanLog)$p.value,
+    Rozkład_normalny = ifelse(shapiro.test(Estimated_MeanLog)$p.value > 0.05, "Tak", "Nie")
+  )
+kable(summary_stats_meanlog6, "markdown")
+```
+<br>Niezależnie od liczby danych możemy wysnuć takie same wnioski co poprzednio odnośnie kształtu rozkładu - Rozkłady wystestymowanych parametrów to rozkłady normalne.<br>
+Zobaczmy, jak wyniki badania prezentują się na histogramach:
+```{r}
+par(mfrow = c(2, 3), mar = c(4, 4, 2, 1))
+
+for (size in sample_sizes) {
+  subset_data6 <- simulation_results4[simulation_results4$Sample_Size == size, ]
+  
+  hist(subset_data6$Estimated_MeanLog, col = "skyblue", border = "white",
+       main = paste("Liczba danych =", size), xlab = "", ylab = "")
+}
+```
+<br>Niezależnie od liczby danych - duże zagęszczenie danych wokół -3 (rzeczywistej wartości średniej logarytmu).<br>
+Wykres pudełkowy:
+```{r}
+ggplot(simulation_results4, aes(x = as.factor(Sample_Size), y = Estimated_MeanLog)) +
+  geom_boxplot() +
+  labs(title = "",
+       x = "Wielkość próby",
+       y = "Średnia logarytmu")
+```
+<br>Wraz ze wzrostem liczby danych - rozkłady wyestymowanych parametrów są mocniej skupione wokół -3.
+
+### Odchylenie standardowe logarytmu
+
+Obliczmy statystyki opisowe dla wyestymowanych parametrów.
+```{r}
+summary_stats_sdlog7 <- simulation_results4 %>%
+  group_by(Sample_Size) %>%
+  summarise(
+    Mean_SDLog = mean(Estimated_SDLog),
+    SD_SDLog = sd(Estimated_SDLog),
+    Kurtosis_SDLog = kurtosis(Estimated_SDLog),
+    Skewness_SDLog = skewness(Estimated_SDLog),
+    Shapiro_p_value = shapiro.test(Estimated_SDLog)$p.value,
+    Rozkład_normalny = ifelse(shapiro.test(Estimated_SDLog)$p.value > 0.05, "Tak", "Nie")
+  )
+kable(summary_stats_sdlog7, "markdown")
+```
+<br>Tutaj obserwujemy pewne zmiany - wyniki testów dla symulacji, gdzie losowaliśmy 20 i 100 danych wskazują na to, że musimy odrzucić hipotezę o normalności rozkładu. Jednakże we wszystkich przypadkach wartości kurtoz są zbliżone do wartości kurtozy rozkładu normalnego, podobnie ze skośnościami w tych rozkładach.<br>
+Zobaczmy, jak wyniki badania prezentują się na histogramach:
+```{r}
+par(mfrow = c(2, 3), mar = c(4, 4, 2, 1))
+
+for (size in sample_sizes) {
+  subset_data7 <- simulation_results4[simulation_results4$Sample_Size == size, ]
+  
+  hist(subset_data7$Estimated_SDLog, col = "skyblue", border = "white",
+       main = paste("Liczba danych =", size), xlab = "", ylab = "")
+}
+```
+<br>Duże skoncentrowanie danych wokół 1.<br>
+Wykres pudełkowy
+```{r}
+ggplot(simulation_results4, aes(x = as.factor(Sample_Size), y = Estimated_SDLog)) +
+  geom_boxplot() +
+  labs(title = "",
+       x = "Wielkość próby",
+       y = "Odchylenie standardowe logarytmu")
+```
+<br>Wraz ze wzrostem danych rozkłady oszacowanych estymatorów są coraz bardziej skupione wokół rzeczywistej wartości odchylenia standardowego logarytmu.<br>
+
+## 𝜇 = 5, $\sigma$ = 1
+```{r}
+true_params5 <- c(5, 1)
+```
+Wywołuję funckję dla różnej liczby próbek.
+```{r}
+simulation_results5<- simulate_mnw(sample_sizes, true_params5)
+```
+
+### Średnia logarytmu
+
+Obliczmy statystyki opisowe dla wyestymowanych parametrów.
+```{r}
+summary_stats_meanlog8 <- simulation_results5 %>%
+  group_by(Sample_Size) %>%
+  summarise(
+    Mean_MeanLog = mean(Estimated_MeanLog),
+    SD_MeanLog = sd(Estimated_MeanLog),
+    Kurtosis_MeanLog = kurtosis(Estimated_MeanLog),
+    Skewness_MeanLog = skewness(Estimated_MeanLog),
+    Shapiro_p_value = shapiro.test(Estimated_MeanLog)$p.value,
+    Rozkład_normalny = ifelse(shapiro.test(Estimated_MeanLog)$p.value > 0.05, "Tak", "Nie")
+  )
+kable(summary_stats_meanlog8, "markdown")
+```
+<br>Widzimy, że dla n = 50 wynik p_value zmusza do odrzucenia hipotezy o normalności rozkładu. Jednakże podobnie jak w poprzednim przypadku - wartość kurtozy jest bliska 3, a obliczona skośność ma niską wartość, co wskazuje na symetryczność rozkładu.<br>
+Zobaczmy, jak wyniki badania prezentują się na histogramach:
+```{r}
+par(mfrow = c(2, 3), mar = c(4, 4, 2, 1))
+
+for (size in sample_sizes) {
+  subset_data8 <- simulation_results5[simulation_results5$Sample_Size == size, ]
+  
+  hist(subset_data8$Estimated_MeanLog, col = "skyblue", border = "white",
+       main = paste("Liczba danych =", size), xlab = "", ylab = "")
+}
+```
+<br>Dane mocno skupione wokół 5.<br>
+Wykres pudełkowy:
+```{r}
+ggplot(simulation_results5, aes(x = as.factor(Sample_Size), y = Estimated_MeanLog)) +
+  geom_boxplot() +
+  labs(title = "",
+       x = "Wielkość próby",
+       y = "Średnia logarytmu")
+```
+<br>Wraz ze wzrostem danych zwiększa się dokładność oszacowań średniej logarytmu.
+
+### Odchylenie standardowe logarytmu
+
+Obliczmy statystyki opisowe dla wyestymowanych parametrów.
+```{r}
+summary_stats_sdlog9 <- simulation_results5 %>%
+  group_by(Sample_Size) %>%
+  summarise(
+    Mean_SDLog = mean(Estimated_SDLog),
+    SD_SDLog = sd(Estimated_SDLog),
+    Kurtosis_SDLog = kurtosis(Estimated_SDLog),
+    Skewness_SDLog = skewness(Estimated_SDLog),
+    Shapiro_p_value = shapiro.test(Estimated_SDLog)$p.value,
+    Rozkład_normalny = ifelse(shapiro.test(Estimated_SDLog)$p.value > 0.05, "Tak", "Nie")
+  )
+kable(summary_stats_sdlog9, "markdown")
+```
+<br>Tutaj podobnie jak poprzednio w kilku przypadkach odrzucamy hipotezę o normalności rozkładów, jednakże obliczone statystyki wskazuję na podobieństwo rozkładów oszacowanych parametrów do rozkładu normalnego.<br>
+Zobaczmy, jak wyniki badania prezentują się na histogramach:
+```{r}
+par(mfrow = c(2, 3), mar = c(4, 4, 2, 1))
+
+for (size in sample_sizes) {
+  subset_data9 <- simulation_results5[simulation_results5$Sample_Size == size, ]
+  
+  hist(subset_data9$Estimated_SDLog, col = "skyblue", border = "white",
+       main = paste("Liczba danych =", size), xlab = "", ylab = "")
+}
+```
+<br>Dane skupione wokół 1.<br>
+Wykres pudełkowy:
+```{r}
+ggplot(simulation_results5, aes(x = as.factor(Sample_Size), y = Estimated_SDLog)) +
+  geom_boxplot() +
+  labs(title = "",
+       x = "Wielkość próby",
+       y = "Odchylenie standardowe logarytmu")
+```
+<br>Tutaj widzimy, że w miarę wzrostu liczby danych, dokładność oszacowania paramteru wzrasta - wartości wyestymowanych estymatorów są coraz bardziej skumulowane wokół rzeczywistej wartości $\sigma$<br>
+
+# Podsumowanie
+- **Dokładność estymacji wzrasta wraz ze wzrostem liczby danych**: Wszystkie nasze badania wykazały, że w miarę zwiększania liczby danych estymatory MNW były coraz bardziej skumulowane wokół rzeczywistych wartości parametrów. Dla małych próbek mieliśmy mniejszą dokładność, ale w miarę wzrostu próbki estymacje stawały się bardziej precyzyjne.
+- **Kształt rozkładu estymatorów**: W większości przypadków rozkłady estymatorów dla obu parametrów (średniej logarytmu i odchylenia standardowego logarytmu) wykazywały podobieństwo do rozkładu normalnego. Testy statystyczne potwierdzały, że w większości przypadków można założyć normalność tych rozkładów.
+- **Zależność dokładności od rzeczywistej wartości szacowanego parametru**: Nie zaobserwowaliśmy znaczących różnic w zachowaniu estymatorów MNW w zależności od konkretnych wartości rzeczywistych parametrów rozkładu. Dokładność estymacji wydaje się być stabilna w różnych scenariuszach.
+- **Zachowanie estymatorów MNW nie zależy od tego, który parametr jest estymowany**: We wszystkich przypadkach dochodziliśmy do tych samych wniosków.
+- **Testy normalności**: W niektórych przypadkach testy normalności wskazywały na potencjalne odstępstwa od normalności, zwłaszcza dla mniejszych próbek. Niemniej jednak, analiza kurtozy i skośności oraz ocena histogramów sugerują, że różnice te mogą być niewielkie. W zdecydowanej większości przypadków rozkład oszacowań parametrów był rozkładem normalnym.
